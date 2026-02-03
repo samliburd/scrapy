@@ -1,0 +1,3 @@
+[tool.ruff.lint]
+fixable = ["ALL"]
+unfixable = ["F401"]
