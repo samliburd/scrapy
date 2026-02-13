@@ -1,5 +1,7 @@
+import os
 import re
 from io import BytesIO
+from urllib.parse import urlparse
 
 import certifi
 import pycurl
@@ -16,19 +18,18 @@ def _get_title_with_playwright(url):
         browser = p.chromium.launch(headless=False)
         try:
             page = browser.new_page()
-            page.goto(url, wait_until="domcontentloaded", timeout=15000)
+            # Reduced timeout to 10s to prevent long hangs on heavy SPAs
+            page.goto(url, wait_until="domcontentloaded", timeout=10000)
             page.wait_for_timeout(2000)
             page_title = page.title()
             return page_title
         except Exception:
-            # We return None so main.py can handle the logging
             return None
         finally:
             browser.close()
 
 
 def get_title(url):
-    buffer = BytesIO()
     c = pycurl.Curl()
     c.setopt(c.URL, url)
     c.setopt(c.FOLLOWLOCATION, True)
@@ -36,12 +37,41 @@ def get_title(url):
         c.USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     )
     c.setopt(c.ENCODING, "")
-    c.setopt(c.WRITEDATA, buffer)
     c.setopt(c.CAINFO, certifi.where())
+
+    # --- SAFETY FIX: Add Timeouts ---
+    # CONNECTTIMEOUT: Max time allowed to establish connection
+    c.setopt(c.CONNECTTIMEOUT, 5)
+    # TIMEOUT: Max time allowed for the entire operation
+    c.setopt(c.TIMEOUT, 10)
+
+    # --- STEP 1: HEAD Request (Check Content-Type) ---
+    c.setopt(c.NOBODY, True)
 
     try:
         c.perform()
     except pycurl.error:
+        c.close()
+        return None
+
+    content_type = c.getinfo(c.CONTENT_TYPE)
+
+    if content_type is None or "text/html" not in content_type.lower():
+        c.close()
+        parsed_path = urlparse(url).path
+        filename = os.path.basename(parsed_path)
+        return filename if filename else "Index / Unknown File"
+
+    # --- STEP 2: GET Request (Download HTML) ---
+    c.setopt(c.HTTPGET, True)
+    
+    buffer = BytesIO()
+    c.setopt(c.WRITEDATA, buffer)
+
+    try:
+        c.perform()
+    except pycurl.error:
+        # If the download times out or fails, we abort
         c.close()
         return None
 

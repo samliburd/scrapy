@@ -1,3 +1,11 @@
+[project]
+name = "scrapy"
+version = "0.1.0"
+description = "Bookmarking tool to add URLs to an sqlite3 database and scrape their titles"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = ["beautifulsoup4","certifi","playwright","pycurl","pyperclip","validators"]
+
 [tool.ruff.lint]
 fixable = ["ALL"]
 unfixable = ["F401"]
