@@ -4,6 +4,7 @@ import logging
 import sqlite3
 import subprocess
 import sys
+from pathlib import Path
 
 import pyperclip
 import validators
@@ -30,6 +31,10 @@ logging.basicConfig(
 
 
 def main():
+    # Setup absolute paths for global execution
+    PROJECT_ROOT = Path(__file__).parent.absolute()
+    DISPLAY_SCRIPT = PROJECT_ROOT / "src" / "display.py"
+
     parser = argparse.ArgumentParser()
     parser.add_argument("url", nargs="?", help="The URL of the site")
     parser.add_argument("--read", help="Launch Streamlit dashboard", action="store_true")
@@ -57,7 +62,7 @@ def main():
 
         # --- READ / DASHBOARD LOGIC ---
         if args.read:
-            # 1. First, check for missing titles and update them
+            # 1. Update missing titles before launching dashboard
             cursor.execute("SELECT * FROM urls WHERE page_title IS NULL")
             missing_rows = cursor.fetchall()
 
@@ -78,9 +83,15 @@ def main():
                 print("Update complete.")
 
             # 2. Launch Streamlit UI
+            # Using sys.executable -m ensures we use the current environment's streamlit
             print("Launching Streamlit dashboard...")
             connection.close()
-            subprocess.run(["streamlit", "run", "src/display.py"])
+            try:
+                subprocess.run([
+                    sys.executable, "-m", "streamlit", "run", str(DISPLAY_SCRIPT)
+                ], check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"Error launching dashboard: {e}")
             return
 
         # --- INSERT LOGIC ---
@@ -97,7 +108,7 @@ def main():
                 pass
 
         if url_to_insert and validators.url(url_to_insert):
-            # FIX: Convert datetime to ISO string to resolve DeprecationWarning
+            # Convert to ISO string for Python 3.12+ SQLite compatibility
             now_str = datetime.datetime.now().isoformat()
 
             cursor.execute(
