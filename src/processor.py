@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 BLOCK_PATTERN = re.compile(
-    r"(?i)(cloudflare|attention required|just a moment|access denied|security check|forbidden|verify you are|are you a human|robot check)"
+    r"(?i)(cloudflare|attention required|just a moment|access denied|security check|forbidden|verify you are|are you a human|robot check|coomer|moment)"
 )
 
 

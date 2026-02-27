@@ -1,7 +1,7 @@
 import argparse
 import datetime
 import logging
-import os  # <--- Needed for path expansion
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -12,10 +12,8 @@ import validators
 
 from src.processor import get_title
 from src.utils.drop import drop_column
+from src.utils.backup import perform_backup
 
-# --- PATH CONFIGURATION ---
-# This ensures the DB is always found at /home/youruser/.urls.db
-# regardless of where you run the script from.
 DATABASE_FILE = os.path.expanduser("~/.urls.db")
 
 logging.basicConfig(
@@ -109,7 +107,6 @@ def main():
         cursor = connection.cursor()
         create_table(cursor)
 
-        # --- RESET COLUMN LOGIC ---
         if args.drop:
             if column_exists(cursor, "urls", args.drop):
                 print(f"Resetting column: {args.drop}...")
@@ -125,75 +122,79 @@ def main():
                 )
             return
 
-        # --- Read Logic ---
-        if args.read:
-            cursor.execute(output_data("urls"))
-            all_rows = cursor.fetchall()
-            total = len(all_rows)
 
-            for index, row in enumerate(all_rows, start=1):
-                row_id = row[0]
-                url_text = row[1]
-                if len(row) > 3:
-                    current_title = row[3]
-                    print(f"Processing {index} of {total}: {url_text}")
-                    if current_title is None:
-                        new_title = get_title(url_text)
-                        if new_title:
-                            title_str = str(new_title)
-                            cursor.execute(
-                                "UPDATE urls SET page_title = ? WHERE id = ?",
-                                (title_str, row_id),
-                            )
-                            connection.commit()
-                            print(f"{url_text} - {title_str}")
-                        else:
-                            error_msg = f"Failed to retrieve title for: {url_text}"
-                            logging.error(error_msg)
-                            cursor.execute(
-                                "UPDATE urls SET page_title = ? WHERE id = ?",
-                                ("Not Found", row_id),
-                            )
-                            connection.commit()
-                            print(f"{url_text} - Not Found")
+        if args.read:
+
+            cursor.execute("SELECT * FROM urls WHERE page_title IS NULL")
+            missing_rows = cursor.fetchall()
+            total_missing = len(missing_rows)
+
+            if total_missing > 0:
+                print(f"Found {total_missing} rows missing titles. Updating now...")
+
+                for index, row in enumerate(missing_rows, start=1):
+                    row_id = row[0]
+                    url_text = row[1]
+
+                    print(f"Scraping {index}/{total_missing}: {url_text}")
+
+                    new_title = get_title(url_text)
+
+                    if new_title:
+                        title_str = str(new_title)
+                        cursor.execute(
+                            "UPDATE urls SET page_title = ? WHERE id = ?",
+                            (title_str, row_id),
+                        )
+                        connection.commit()
+                        print(f"  -> Success: {title_str}")
                     else:
-                        print(f"{url_text} - {current_title}")
-                else:
-                    print(f"Processing {index} of {total}: {url_text}")
+                        error_msg = f"Failed to retrieve title for: {url_text}"
+                        logging.error(error_msg)
+                        cursor.execute(
+                            "UPDATE urls SET page_title = ? WHERE id = ?",
+                            ("Not Found", row_id),
+                        )
+                        connection.commit()
+                        print("  -> Failed (Marked as 'Not Found')")
+
+                print("-" * 40)
+                print("All missing titles updated.\n")
 
             cursor.execute(output_data("urls"))
             final_rows = cursor.fetchall()
             display_in_less(final_rows)
             return
 
-        # --- Insert Logic ---
         url_to_insert = args.url
         source = "argument"
 
-        # 1. If no arg provided, try getting from clipboard
         if url_to_insert is None:
             try:
                 clipboard_content = pyperclip.paste().strip()
-                # Only use clipboard if it passes the URL check
                 if validators.url(clipboard_content):
                     url_to_insert = clipboard_content
                     source = "clipboard"
             except Exception:
-                # pyperclip can fail on headless systems
                 pass
 
-        # 2. Process the URL (whether from arg or clipboard)
         if url_to_insert and validators.url(url_to_insert):
-            insert_command = insert_data("urls", url_to_insert, datetime.datetime.now())
-            cursor.execute(insert_command)
+            cursor.execute(insert_data("urls", url_to_insert, datetime.datetime.now()))
             connection.commit()
             print(f"Added ({source}): {url_to_insert}")
 
-        # 3. Handle specific failure case: User provided an arg, but it was bad
+            cursor.execute("SELECT COUNT(*) FROM urls")
+            count = cursor.fetchone()[0]
+
+            if count > 0 and count % 5 == 0:
+                connection.close()
+                perform_backup(DATABASE_FILE)
+                connection = connect_to_db(DATABASE_FILE)
+                cursor = connection.cursor()
+
         elif args.url:
             print("Please input a valid URL.")
 
-        # 4. Handle generic failure: No args, and Clipboard was empty or invalid
         else:
             parser.print_help()
 
