@@ -6,7 +6,8 @@ from datetime import datetime
 def perform_backup(source_path):
     backup_dir_str = os.environ.get("BOOKMARK_BACKUP_DIR")
     if not backup_dir_str:
-        return  # Or log an error that the env var is missing
+        print("Backup directory not set. Add $BOOKMARK_BACKUP_DIR to your environment variable.")
+        return
 
     backup_dir = Path(backup_dir_str)
     backup_dir.mkdir(parents=True, exist_ok=True)
