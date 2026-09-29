@@ -84,11 +84,21 @@ def main():
 
             # 2. Launch Streamlit UI
             # Using sys.executable -m ensures we use the current environment's streamlit
-            print("Launching Streamlit dashboard...")
+            dashboard_url = "http://localhost:8501"
+            print(f"Launching Streamlit dashboard at {dashboard_url}...")
+            
+            try:
+                pyperclip.copy(dashboard_url)
+                print("Dashboard URL copied to clipboard.")
+            except Exception:
+                pass
+                
             connection.close()
             try:
                 subprocess.run([
-                    sys.executable, "-m", "streamlit", "run", str(DISPLAY_SCRIPT)
+                    sys.executable, "-m", "streamlit", "run", str(DISPLAY_SCRIPT),
+                    "--server.headless", "true",
+                    "--server.port", "8501"
                 ], check=True)
             except subprocess.CalledProcessError as e:
                 print(f"Error launching dashboard: {e}")
