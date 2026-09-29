@@ -127,4 +127,3 @@ ARCHITECTURE.md
 # App configurations & Logs
 errors.log
 *.log
-.streamlit/
